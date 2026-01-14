@@ -1,4 +1,4 @@
-name: Build & Release
+name: Release
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  build-release:
+  release:
     runs-on: macos-26
 
     steps:
@@ -44,6 +44,7 @@ jobs:
 
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "dist/$ASSET"
           shasum -a 256 "dist/$ASSET" | awk '{print $1}' > "dist/$ASSET.sha256"
+          cp "dist/$ASSET" "dist/coaster-latest-macos.zip"
 
       - name: Release
         uses: softprops/action-gh-release@v2
