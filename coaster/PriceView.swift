@@ -195,15 +195,21 @@ struct PriceView: View {
 
     private var header: some View {
         HStack(alignment: .center, spacing: 8) {
-            Link("🎢", destination: URL(string: "https://github.com/sukoneck/coaster")!)
-                .font(.system(size: 12, weight: .bold))
+            Button {
+                NSWorkspace.shared.open(URL(string: "https://github.com/sukoneck/coaster")!)
+            } label: {
+                Text("🎢")
+                    .font(.system(size: 12, weight: .bold))
+            }
+            .buttonStyle(.plain)
+            .help("GitHub")
 
             Spacer()
 
             if model.isLoading {
                 ProgressView()
                     .controlSize(.small)
-                    .frame(width: 14, height: 14)   // fixed size avoids AppKit intrinsic sizing warnings
+                    .frame(width: 14, height: 14)
                     .help("Loading…")
             }
 
@@ -224,6 +230,15 @@ struct PriceView: View {
             }
             .buttonStyle(.plain)
             .help("Settings")
+
+            Button {
+                NSApp.terminate(nil)
+            } label: {
+                Text("⏻")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .help("Quit")
         }
     }
 
