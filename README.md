@@ -1,8 +1,10 @@
-# Summary
+# 🎢
 
-Price tracker for macOS navbar. What a ride 🎢
+## Summary
 
-# Install
+Price tracker for macOS navbar. What a ride.
+
+## Install
 
 Versioned releases available [here](https://github.com/sukoneck/coaster/releases). Latest version available on Brew:
 ```sh
