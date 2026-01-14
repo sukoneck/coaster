@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build-release:
-    runs-on: macos-15
+    runs-on: macos-26
 
     steps:
       - name: Checkout
@@ -23,6 +23,7 @@ jobs:
             -project coaster.xcodeproj \
             -scheme coaster \
             -configuration Release \
+            -destination 'platform=macOS,arch=arm64' \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO
 
