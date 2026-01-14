@@ -1,0 +1,52 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          set -euxo pipefail
+          xcodebuild \
+            -project coaster.xcodeproj \
+            -scheme coaster \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Package
+        run: |
+          set -euxo pipefail
+          APP_PATH="build/Build/Products/Release/coaster.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "Expected app at $APP_PATH not found. Check scheme/product name."
+            find build/Build/Products -maxdepth 4 -type d -name "*.app" -print
+            exit 1
+          fi
+
+          mkdir -p dist
+          VERSION="${GITHUB_REF_NAME#v}"
+          ASSET="coaster-${VERSION}-macos.zip"
+
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "dist/$ASSET"
+          shasum -a 256 "dist/$ASSET" | awk '{print $1}' > "dist/$ASSET.sha256"
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.zip
+            dist/*.sha256
+          generate_release_notes: true
