@@ -5,6 +5,12 @@ import AppKit
 extension Notification.Name {
     static let openSettingsWindow = Notification.Name("OpenSettingsWindow")
     static let resizePopover = Notification.Name("ResizePopover")
+    static let openPinnedWindow = Notification.Name("OpenPinnedWindow")
+}
+
+@MainActor
+final class WindowState: ObservableObject {
+    @Published var isAlwaysOnTop: Bool = false
 }
 
 struct TokenPriceRow: Identifiable {
@@ -17,7 +23,7 @@ struct TokenPriceRow: Identifiable {
 
 @MainActor
 final class PriceModel: ObservableObject {
-    @AppStorage("coingecko_ids") private var idsRaw: String = "nockchain"
+    @AppStorage("coingecko_tickers") private var tickersRaw: String = "nock"
     @AppStorage("coingecko_api_key") private var apiKey: String = ""
 
     @Published var statusText: String = "Click the icon to refresh"
@@ -25,22 +31,22 @@ final class PriceModel: ObservableObject {
     @Published var isError: Bool = false
     @Published var isLoading: Bool = false
 
-    private var idsList: [String] {
-        idsRaw
+    private var tickersList: [String] {
+        tickersRaw
             .lowercased()
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
     }
 
-    private var idsQueryValue: String {
-        idsList.joined(separator: ",")
+    private var tickersQueryValue: String {
+        tickersList.joined(separator: ",")
     }
 
     private var url: URL? {
-        let ids = idsQueryValue
-        guard !ids.isEmpty else { return nil }
-        return URL(string: "https://api.coingecko.com/api/v3/simple/price?vs_currencies=usd&ids=\(ids)")
+        let tickers = tickersQueryValue
+        guard !tickers.isEmpty else { return nil }
+        return URL(string: "https://api.coingecko.com/api/v3/simple/price?vs_currencies=usd&symbols=\(tickers)")
     }
 
     func fetch() async {
@@ -50,7 +56,7 @@ final class PriceModel: ObservableObject {
 
         guard let url else {
             isLoading = false
-            statusText = "Set ids in Settings"
+            statusText = "Set tickers in Settings"
             return
         }
 
@@ -73,12 +79,12 @@ final class PriceModel: ObservableObject {
 
             let decoded = try JSONDecoder().decode([String: [String: Double]].self, from: data)
 
-            let ids = idsList
-            rows = ids.map { id in
-                if let usd = decoded[id]?["usd"] {
-                    return TokenPriceRow(coinID: id, symbol: id.uppercased(), priceText: formatUSD(usd))
+            let tickers = tickersList
+            rows = tickers.map { ticker in
+                if let usd = decoded[ticker]?["usd"] {
+                    return TokenPriceRow(coinID: ticker, symbol: ticker.uppercased(), priceText: formatUSD(usd))
                 } else {
-                    return TokenPriceRow(coinID: id, symbol: id.uppercased(), priceText: "—")
+                    return TokenPriceRow(coinID: ticker, symbol: ticker.uppercased(), priceText: "—")
                 }
             }
 
@@ -112,14 +118,19 @@ private struct PriceRowView: View {
     let row: TokenPriceRow
     let isHovered: Bool
     let isJustCopied: Bool
+
+    let symbolColumnWidth: CGFloat
     let priceColumnWidth: CGFloat
+    let rowHorizontalPadding: CGFloat
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Text(row.symbol)
                 .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .monospaced()
                 .lineLimit(1)
-                .frame(minWidth: 84, alignment: .leading)
+                .truncationMode(.tail)
+                .frame(width: symbolColumnWidth, alignment: .leading)
 
             Spacer(minLength: 0)
 
@@ -130,7 +141,7 @@ private struct PriceRowView: View {
                 .frame(width: priceColumnWidth, alignment: .trailing)
         }
         .padding(.vertical, 7)
-        .padding(.horizontal, 10)
+        .padding(.horizontal, rowHorizontalPadding)
         .background(
             RoundedRectangle(cornerRadius: 10)
                 .fill(isJustCopied ? Color.primary.opacity(0.14) : (isHovered ? Color.primary.opacity(0.08) : Color.clear))
@@ -141,15 +152,27 @@ private struct PriceRowView: View {
 
 struct PriceView: View {
     @EnvironmentObject private var model: PriceModel
+    @EnvironmentObject private var windowState: WindowState
+
+    let isWindowMode: Bool
+
     @State private var hoveredID: String? = nil
     @State private var showCopiedToast = false
     @State private var copiedID: String? = nil
 
-    private let width: CGFloat = 300
+    @State private var lastPostedHeight: CGFloat = 0
+
+    // ✅ slimmer
+    private let width: CGFloat = 236
+    private let outerHorizontalPadding: CGFloat = 8
+    private let rowHorizontalPadding: CGFloat = 8
+
     private let emptyMinHeight: CGFloat = 140
     private let maxHeight: CGFloat = 380
 
-    private let priceColumnWidth: CGFloat = 124
+    // ✅ slimmer columns
+    private let symbolColumnWidth: CGFloat = 50
+    private let priceColumnWidth: CGFloat = 116
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -184,13 +207,13 @@ struct PriceView: View {
                 }
             }
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, outerHorizontalPadding)
         .padding(.vertical, 8)
         .frame(width: width, height: desiredHeight(), alignment: .topLeading)
-        .onAppear { postResize() }
-        .onChange(of: model.rows.count) { _, _ in postResize() }
-        .onChange(of: model.isError) { _, _ in postResize() }
-        .onChange(of: model.statusText) { _, _ in postResize() }
+        .onAppear { scheduleResize() }
+        .onChange(of: model.rows.count) { _, _ in scheduleResize() }
+        .onChange(of: model.isError) { _, _ in scheduleResize() }
+        .onChange(of: model.statusText) { _, _ in scheduleResize() }
     }
 
     private var header: some View {
@@ -232,13 +255,44 @@ struct PriceView: View {
             .help("Settings")
 
             Button {
-                NSApp.terminate(nil)
+                if isWindowMode {
+                    windowState.isAlwaysOnTop.toggle()
+                } else {
+                    NotificationCenter.default.post(name: .openPinnedWindow, object: nil)
+                }
             } label: {
-                Text("⏻")
+                Image(systemName: iconName)
                     .font(.system(size: 12, weight: .semibold))
             }
             .buttonStyle(.plain)
-            .help("Quit")
+            .help(helpText)
+
+            if !isWindowMode {
+                Button {
+                    NSApp.terminate(nil)
+                } label: {
+                    Text("⏻")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .help(isWindowMode ? "Close window" : "Quit")
+            }
+        }
+    }
+
+    private var iconName: String {
+        if isWindowMode {
+            return windowState.isAlwaysOnTop ? "pin.fill" : "pin"
+        } else {
+            return "rectangle.portrait.and.arrow.right"
+        }
+    }
+
+    private var helpText: String {
+        if isWindowMode {
+            return windowState.isAlwaysOnTop ? "Always on top: On" : "Always on top: Off"
+        } else {
+            return "Open as window"
         }
     }
 
@@ -304,7 +358,9 @@ struct PriceView: View {
                 row: row,
                 isHovered: hoveredID == row.id,
                 isJustCopied: copiedID == row.id,
-                priceColumnWidth: priceColumnWidth
+                symbolColumnWidth: symbolColumnWidth,
+                priceColumnWidth: priceColumnWidth,
+                rowHorizontalPadding: rowHorizontalPadding
             )
             .onHover { inside in
                 hoveredID = inside ? row.id : (hoveredID == row.id ? nil : hoveredID)
@@ -373,8 +429,19 @@ struct PriceView: View {
         }
     }
 
+    private func scheduleResize() {
+        DispatchQueue.main.async { postResize() }
+    }
+
     private func postResize() {
         let h = desiredHeight()
-        NotificationCenter.default.post(name: .resizePopover, object: nil, userInfo: ["height": Double(h)])
+        if abs(h - lastPostedHeight) < 1 { return }
+        lastPostedHeight = h
+
+        NotificationCenter.default.post(
+            name: .resizePopover,
+            object: nil,
+            userInfo: ["height": Double(h)]
+        )
     }
 }

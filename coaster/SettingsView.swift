@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 struct SettingsView: View {
-    @AppStorage("coingecko_ids") private var savedIDs: String = "nockchain"
+    @AppStorage("coingecko_tickers") private var savedTickers: String = "btc"
     @AppStorage("coingecko_api_key") private var savedAPIKey: String = ""
 
     @State private var draft: String = ""
@@ -15,12 +15,12 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
                     GridRow {
-                        Text("COINS")
+                        Text("TICKERS")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(.secondary)
                             .frame(width: 62, alignment: .leading)
 
-                        TextField("nockchain, bitcoin, ethereum", text: $draft)
+                        TextField("nock, btc, eth", text: $draft)
                             .textFieldStyle(.roundedBorder)
                             .disabled(saving)
                     }
@@ -29,7 +29,7 @@ struct SettingsView: View {
                         Color.clear
                             .frame(width: 62, height: 1)
 
-                        Text("CoinGecko ids (comma-separated).")
+                        Text("Tickers (comma-separated)")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -56,7 +56,7 @@ struct SettingsView: View {
                             .frame(width: 62, height: 1)
 
                         HStack(spacing: 0) {
-                            Text("API key is sent as x-cg-demo-api-key. ")
+                            Text("CoinGecko API key is sent as x-cg-demo-api-key. ")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
 
@@ -100,8 +100,10 @@ struct SettingsView: View {
                         .frame(width: 14, height: 14)
                 }
 
-                Button("Contribute ↗") {
+                Button() {
                     NSWorkspace.shared.open(URL(string: "https://github.com/sukoneck/coaster")!)
+                } label: {
+                    Label("Contribute ", systemImage: "rectangle.portrait.and.arrow.right")
                 }
 
                 Spacer()
@@ -121,7 +123,7 @@ struct SettingsView: View {
         .padding(14)
         .frame(width: 480)
         .onAppear {
-            draft = savedIDs
+            draft = savedTickers
             apiKeyDraft = savedAPIKey
         }
     }
@@ -131,21 +133,21 @@ struct SettingsView: View {
         saving = true
         errorText = nil
 
-        let ids = draft
+        let tickers = draft
             .lowercased()
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
 
-        guard !ids.isEmpty else {
-            errorText = "Enter at least one id."
+        guard !tickers.isEmpty else {
+            errorText = "Enter at least one ticker."
             saving = false
             return
         }
 
-        let joined = ids.joined(separator: ",")
-        guard let url = URL(string: "https://api.coingecko.com/api/v3/simple/price?vs_currencies=usd&ids=\(joined)") else {
-            errorText = "Invalid ids."
+        let joined = tickers.joined(separator: ",")
+        guard let url = URL(string: "https://api.coingecko.com/api/v3/simple/price?vs_currencies=usd&symbols=\(joined)") else {
+            errorText = "Invalid tickers."
             saving = false
             return
         }
@@ -196,7 +198,7 @@ struct SettingsView: View {
             var missing: [String] = []
             var noUSD: [String] = []
 
-            for id in ids {
+            for id in tickers {
                 let k = String(id)
                 guard let entry = decoded[k] else {
                     missing.append(k)
@@ -219,7 +221,7 @@ struct SettingsView: View {
                 return
             }
 
-            savedIDs = joined
+            savedTickers = joined
             savedAPIKey = key
             saving = false
             NSApp.keyWindow?.close()
